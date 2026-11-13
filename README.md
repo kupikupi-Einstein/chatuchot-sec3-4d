@@ -2,6 +2,9 @@
 
 ทางพิเศษฉลองรัชส่วนต่อขยาย ตอนที่ 3 – 4D การก่อสร้างตามแผน CPM – static web app (three.js), opens in any modern browser, installable as a PWA.
 
+พัฒนาโดย บัณฑิต ประสิทธิ์นราพันธุ์ · Developed by Bundit Prasitnaraphan
+
+
 | Feature | |
 |---|---|
 | 4D timeline | play / scrub dates, Gantt, S-curve, method statement steps |

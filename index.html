@@ -777,6 +777,9 @@ function buildProject(api) {
     label(L2('สายส่ง 500 kV กฟผ.', 'EGAT 500 kV line'), V3(X_EG.x + 40, 60, X_EG.z - 40), '#adb5bd', 'egat', 'road', 1.1);
   }
   window.__s3 = G;   // debug / QA hook
+  { const d = document.createElement('div'); d.id = 'devCredit'; d.textContent = 'พัฒนาโดย บัณฑิต ประสิทธิ์นราพันธุ์ · Developed by Bundit Prasitnaraphan';
+    const st = document.createElement('style'); st.textContent = '#devCredit{position:fixed;left:50%;transform:translateX(-50%);bottom:0;z-index:6;font-size:10.5px;line-height:12px;color:#fff;opacity:.8;text-shadow:0 1px 2px #000;pointer-events:none;white-space:nowrap}body.noui #devCredit{display:none}';
+    document.head.appendChild(st); document.body.appendChild(d); const m = document.createElement('meta'); m.name = 'author'; m.content = 'Bundit Prasitnaraphan (บัณฑิต ประสิทธิ์นราพันธุ์)'; document.head.appendChild(m); }
   /* ---------- info tab ---------- */
   const nFt = Object.keys(FB).filter(k => k.endsWith(':footing')).length, nSeg = Object.keys(FB).filter(k => k.startsWith('BC:')).length;
   const sh = Object.entries(seqNote).map(([a, l]) => `${a}: ${l.length} ตอม่อ`).join(' · ');
@@ -795,7 +798,7 @@ function buildProject(api) {
 <li>คาน I-Girder/Deck: วาดจากความกว้างหัวเสา/คานขวางใน Revit · ลึก 1.70 + พื้น 0.20 ม. (EL SUB TYPE) · จำนวนคานต่อช่วงสมมติ (~2.45 ม./ตัว)</li>
 <li>Ramp: ฐานราก/เสา/หัวเสาวาดจากตาราง GA (ขนาดหน้าตัดสมมติ) · ช่วงสุดท้ายลงเสานอกของตอม่อ IYI MLP1-233</li>
 <li>งานเข็ม: เจาะทีละต้นภายในช่วงวันของตอม่อ · Rig + Casing + กรงเหล็ก + เครนบริการ + Bentonite plant ต่อ Zone (ตำแหน่งสมมติ แบบตอนที่ 4)</li><li>ยกคาน I-Girder ตาม MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 + Method Erection I Girder (เหมือน I-girder 4D): Truck crane 110 t × 2 ตำแหน่งตาม Lifting plan Case A (&lt; 22 ม.) / B · วันละ 1 ฝั่ง G1–G6 ยก 07:00, 08:15, 09:30 / ย้ายเครน 10:50 / 12:00, 13:15, 14:30 · รถหางสาลี่จอดฝั่งถนน Access · ยกปลาย A ข้ามก่อน ปลาย B ตาม แล้ววางลง · เครนย้ายช่วงถัดไป 05:30–06:30</li><li>ช่วงต่อ BC (MLP1-266→267, 270→271): ขอบ Deck = กล่อง BC 2 กล่อง กว้าง 14.58 ม. ที่ ±7.65 ม. (แบบ BC แผ่น 26) · Median barrier สูง 0.81 ม. บน Deck ผืนเดียว (ตอม่อ Y / IYI)</li><li>Clearing + ถนน Access 7 ม. สองฝั่ง และจุดเข้า-ออกที่ถนนสาธารณะตัดแนว – ไม่มีแผนเข้าพื้นที่ตอนที่ 3 จึงวางแบบเดียวกับตอนที่ 4 (สมมติ) · เริ่มเมื่อรับมอบพื้นที่ / 30 วันก่อนงานแรกของ Zone</li><li>ความสูงเสาส่ง 500 kV และการจัดการจราจร ถ.นิมิตใหม่ เป็นภาพสมมติ</li></ul>
-<h3>พิกัด</h3><p class="mut" style="font-size:11.5px">UTM WGS84 47N − (693000, 1540700) · x = ตะวันออก, z = ใต้, y = MSL − 1.0 ม. · ซ้าย/ขวา มองตามทิศ Station (ไปทางตะวันออก) – ซ้าย = ฝั่งเหนือ</p>`,
+<h3>ผู้พัฒนา</h3><p class="mut" style="font-size:11.5px">พัฒนาโดย บัณฑิต ประสิทธิ์นราพันธุ์</p><h3>พิกัด</h3><p class="mut" style="font-size:11.5px">UTM WGS84 47N − (693000, 1540700) · x = ตะวันออก, z = ใต้, y = MSL − 1.0 ม. · ซ้าย/ขวา มองตามทิศ Station (ไปทางตะวันออก) – ซ้าย = ฝั่งเหนือ</p>`,
     `<h3>Sources</h3><ul class="mut" style="padding-left:16px;font-size:11.5px">
 <li><b>Programme</b>: 3.2 CPM Rev. 31-10-2026.mpp (read through MS Project) – SECTION 3 (Zones 3-1…3-5, girders, balanced cantilever, deck) + IC2 Hatairat · % complete in the file is 0, so the plan is shown</li>
 <li><b>Revit model</b>: ITD_CEX_ST_S3_r25 3D_Viewer.fbx – 1,514 piles, ${nFt} footings, columns / pier heads / crossbeams, ${nSeg} BC parts · real UTM 47N coordinates (0.01 m vs the KMZ), MSL levels</li>
@@ -810,7 +813,7 @@ function buildProject(api) {
 <li>I-girders / deck: drawn from the Revit pier-head / crossbeam widths · girder 1.70 + slab 0.20 m (EL SUB TYPE) · girder count per span assumed (~2.45 m spacing)</li>
 <li>Ramps: footings / columns / crossheads from the GA tables (section sizes assumed) · last span lands on the outer column of IYI pier MLP1-233</li>
 <li>Piling: piles bored one at a time inside the pier window · rig + casing + rebar cage + service crane + bentonite plant per zone (positions assumed, as Sec.4)</li><li>I-girder erection per MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 + Method Erection I Girder (as the I-girder 4D): 2 × 110 t truck cranes at the lifting-plan positions, Case A (&lt; 22 m) / B · one carriageway G1–G6 per day, lifts 07:00, 08:15, 09:30 / cranes re-position 10:50 / 12:00, 13:15, 14:30 · pole trailer on the access-road side · end A swings across first, end B follows, then lowered · cranes move on 05:30–06:30</li><li>BC joins (MLP1-266→267, 270→271): deck edges = the two BC boxes 14.58 m wide at ±7.65 m (BC sheet 26) · 0.81 m median barrier on one-piece decks (Y / IYI piers)</li><li>Clearing + 7 m access roads on both sides and gates where public roads cross – no Sec.3 access plan, laid out as Sec.4 (assumed) · from handover / 30 days before the zone's first work</li><li>500 kV tower heights and the Nimit Mai Rd. traffic management are indicative</li></ul>
-<h3>Coordinates</h3><p class="mut" style="font-size:11.5px">UTM WGS84 47N − (693000, 1540700) · x = east, z = south, y = MSL − 1.0 m · left/right looking up-station (east) – left = north side</p>`];
+<h3>Developer</h3><p class="mut" style="font-size:11.5px">Developed by Bundit Prasitnaraphan</p><h3>Coordinates</h3><p class="mut" style="font-size:11.5px">UTM WGS84 47N − (693000, 1540700) · x = east, z = south, y = MSL − 1.0 m · left/right looking up-station (east) – left = north side</p>`];
 }
 
 function updateProject(api, t, dt) {
