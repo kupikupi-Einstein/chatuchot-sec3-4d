@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chatuchot Sec.3 4D</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-32.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <script src="site_map.js"></script>
 <script src="model_s3.js"></script>
 <meta name="theme-color" content="#0b1f33">
@@ -276,8 +279,9 @@ const PROJECT = {
     ramp: { t: ['Ramp 01N02 / 01X02 (IC2)', 'Ramps 01N02 / 01X02 (IC2)'], grp: 'Superstructure', c: '#63e6be' },
     trav: { t: ['Form traveller', 'Form travellers'], grp: 'Temporary Works', c: '#ff6b6b' },
     fw: { t: ['นั่งร้าน / Falsework', 'Falsework'], grp: 'Temporary Works', c: '#ffe066' },
-    rig: { t: ['เครื่องเจาะเข็ม (Rig)', 'Piling rigs'], grp: 'Temporary Works', c: '#ffd43b' },
-    crane: { t: ['เครนยกคาน (Crawler crane ×2)', 'Girder-erection crawler cranes ×2'], grp: 'Temporary Works', c: '#fab005' },
+    haul: { t: ['Clearing + ถนน Access / Haul road', 'Clearing + access / haul roads'], grp: 'Temporary Works', c: '#e9d8a6' },
+    rig: { t: ['เครื่องเจาะเข็ม (Rig) + Bentonite plant', 'Piling rigs + bentonite plant'], grp: 'Temporary Works', c: '#ffd43b' },
+    crane: { t: ['เครนยกคาน Truck crane 110 t × 2 + รถหางสาลี่', 'Girder cranes 110 t × 2 + pole trailer'], grp: 'Temporary Works', c: '#fab005' },
     tm: { t: ['การจัดการจราจร (Barrier + ป้าย)', 'Traffic management (barriers + signs)'], grp: 'Traffic', c: '#f76707' },
     util: { t: ['สายส่ง 500 kV กฟผ. (ยกระดับ)', 'EGAT 500 kV line (raised)'], grp: 'Utilities', c: '#868e96' },
   },
@@ -459,11 +463,13 @@ function buildProject(api) {
   /* ---------- substructure elements ---------- */
   const zgrp = (p, th, en) => L2(`Zone ${p.zone} · ${th}`, `Zone ${p.zone} · ${en}`);
   const pileGeo = (P) => mergeGeometries(P.map(([x, z, top, bot, r]) => { const h = top - bot, g = new THREE.CylinderGeometry(r, r, h, 10); g.translate(x, Y(bot) + h / 2, z); return g; }));
-  const bcByPier = { 267: 'BB', 270: 'BB' };
+  const bcByPier = { 267: 'BB', 270: 'BB' }; G.pileEls = [];
   PIERS.forEach(p => {
     const loc = `Sta.${fmtSta(p.sta)} · ${p.sub}`, sp = srcOf.PILE[p.n], piles = window.S3M?.piles?.[p.n] || [];
-    if (piles.length) { const o = new THREE.Group(); o.add(mesh(pileGeo(piles), Mx.pile)); const [s, f] = assign.PILE[p.n];
-      addEl({ id: `${p.n}:PILE`, name: `${p.n} เสาเข็มเจาะ ${piles.length} ต้น Ø${(piles[0][4] * 2).toFixed(1)} ม.`, cat: 'pile', grp: zgrp(p, 'เสาเข็มเจาะ', 'Bored piles'), obj: o, kind: 'grow', start: s, finish: f,
+    if (piles.length) { const o = new THREE.Group(), [s, f] = assign.PILE[p.n];
+      piles.forEach(([x, z, top, bot, r]) => { const h = top - bot, m = mesh(new THREE.CylinderGeometry(r, r, h, 10), Mx.pile); m.geometry.translate(0, -h / 2, 0); m.position.set(x, Y(top), z); o.add(m); });
+      if (sp !== 'before') G.pileEls.push({ o, p, piles, s, f });
+      addEl({ id: `${p.n}:PILE`, name: `${p.n} เสาเข็มเจาะ ${piles.length} ต้น Ø${(piles[0][4] * 2).toFixed(1)} ม.`, cat: 'pile', grp: zgrp(p, 'เสาเข็มเจาะ', 'Bored piles'), obj: o, start: s, finish: f,
         src: sp === 'before' ? 'ก่อนเริ่มแผน (สมมติ) – ไม่มีในแผน CPM' : sp, dwg: 'ITD_CEX_ST_S3_r25', loc, qty: { n: piles.length, L: +(piles[0][2] - piles[0][3]).toFixed(1) } }); }
     const ft = fobj([`${p.n}:footing`]);
     if (ft) { const [s, f] = assign.FT[p.n]; addEl({ id: `${p.n}:FT`, name: `${p.n} ฐานราก ${p.cols.length > 1 ? '× ' + p.cols.length : ''}`, cat: 'footing', grp: zgrp(p, 'ฐานราก', 'Footings'), obj: ft, kind: 'cast', start: s, finish: f, qty: vq(ft),
@@ -507,10 +513,11 @@ function buildProject(api) {
   const ZMAX = { '3-1': 0, '3-2': 0 };
   spans.forEach(S => { const { A, B, a, b } = S, TR = 1.15;
     const ya = deckTop(A, a), yb = deckTop(B, b), wa = a[1] - a[0], wb = b[1] - b[0], n = Math.max(2, Math.round(Math.max(wa, wb) / 2.45));
-    const gg = [];
-    for (let j = 0; j < n; j++) { const u = (j + .5) / n, oa = a[0] + wa * u, ob = b[0] + wb * u, pa = axisAt(stripSta(a, oa) + TR, oa), pb = axisAt(stripSta(b, ob) - TR, ob);
-      gg.push(girder(V3(pa.x, ya - .30 - DG, pa.z), V3(pb.x, yb - .30 - DG, pb.z))); }
-    const go = new THREE.Group(); go.add(mesh(mergeGeometries(gg), Mx.white)); S.go = go;
+    const go = new THREE.Group(); S.gl = []; const outer = Math.abs(a[0] + b[0]) > Math.abs(a[1] + b[1]) ? -1 : 1;   // erect from the outer edge inwards
+    for (let jj = 0; jj < n; jj++) { const j = outer > 0 ? n - 1 - jj : jj, u = (j + .5) / n, oa = a[0] + wa * u, ob = b[0] + wb * u, pa = axisAt(stripSta(a, oa) + TR, oa), pb = axisAt(stripSta(b, ob) - TR, ob);
+      const A0 = V3(pa.x, ya - .30 - DG, pa.z), B0 = V3(pb.x, yb - .30 - DG, pb.z), L = A0.distanceTo(B0), g = new THREE.ExtrudeGeometry(girdShape, { depth: L, bevelEnabled: false }); g.translate(0, 0, -L / 2);
+      const m = mesh(g, Mx.white), C = A0.clone().add(B0).multiplyScalar(.5); m.position.copy(C); m.lookAt(B0); m.updateMatrix(); m.userData.fin = { C, q: m.quaternion.clone(), L }; go.add(m); S.gl.push(m); }
+    S.go = go; S.outer = outer; S.mid = { a: (a[0] + a[1]) / 2, b: (b[0] + b[1]) / 2, ea: outer > 0 ? a[1] : a[0], eb: outer > 0 ? b[1] : b[0] };
     const c = [[a, a[0], ya, -1], [a, a[1], ya, -1], [b, b[1], yb, 1], [b, b[0], yb, 1]].map(([st, off, y, sg]) => { const q = axisAt(stripSta(st, off) + sg * .02, off); return V3(q.x, y - .08, q.z); });
     const dk = new THREE.Group(); dk.add(mesh(quadSlab(c, .22), Mx.concG));
     [[0, 3], [1, 2]].forEach(([i, j]) => { const P = c[i], Q = c[j], m = mesh(new THREE.BoxGeometry(.45, .95, P.distanceTo(Q)), Mx.concG); m.position.copy(P).add(Q).multiplyScalar(.5).add(V3(0, .45, 0)); m.lookAt(Q.clone().add(V3(0, .45, 0))); dk.add(m); });
@@ -602,11 +609,75 @@ function buildProject(api) {
   G.rigs = lanes.PILE.map((ln, i) => { const o = makeRig(), s = ln[0].s, f = ln.at(-1).f;
     const e = addEl({ id: `RIG-${i}`, name: `เครื่องเจาะเข็ม Rig ${i + 1} (${ln[0].p.n} → ${ln.at(-1).p.n})`, cat: 'rig', grp: L2('งานชั่วคราว: Rig เจาะเข็ม', 'Temp: piling rigs'), obj: o, temp: true, start: s - 3 * DAY, finish: s, rmS: f, rmE: f + 3 * DAY, src: SRC_A + ' – ตำแหน่งตามลำดับงานเข็ม', noShadow: true });
     return { e, ln }; });
-  const makeCrawler = () => { const g = new THREE.Group(); const b = mesh(new THREE.BoxGeometry(8, 1.6, 6), Mx.steel); b.position.y = .8; g.add(b); const h = mesh(new THREE.BoxGeometry(5, 3, 4), Mx.yel); h.position.y = 3; g.add(h);
-    const boom = mesh(new THREE.BoxGeometry(1, 1, 42), Mx.yel); boom.geometry.translate(0, 0, 21); boom.position.set(0, 4, 1.5); boom.rotation.x = -1.0; g.add(boom); return g; };
-  G.cranes = G.girLanes.map((ln, i) => { if (!ln.length) return null; const o = new THREE.Group(); const c1 = makeCrawler(), c2 = makeCrawler(); c1.position.set(0, 0, -16); c2.position.set(0, 0, 16); c2.rotation.y = Math.PI; o.add(c1, c2);
-    const e = addEl({ id: `CRANE-${i}`, name: `Crawler crane ×2 ยกคาน (ชุด ${i + 1})`, cat: 'crane', grp: L2('งานชั่วคราว: เครนยกคาน', 'Temp: girder cranes'), obj: o, temp: true, start: ln[0].g[0] - 3 * DAY, finish: ln[0].g[0], rmS: ln.at(-1).g[1], rmE: ln.at(-1).g[1] + 3 * DAY, src: SRC_A, noShadow: true });
-    return { e, ln }; }).filter(Boolean);
+  /* girder erection – method of MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 (I-girder 4D): 2 truck cranes 110 t (boom 21.6 m) at the two span
+     ends, girders delivered one at a time on a pole trailer along the outer edge, tandem lift from the outer girder inwards, 07:00–16:00 */
+  const HR = DAY / 24, BL = 21.6, segGeo = new THREE.CylinderGeometry(1, 1, 1, 6); segGeo.rotateX(Math.PI / 2);
+  const fx = new THREE.Group(); api.scene.add(fx);
+  const seg = (r, m) => { const o = mesh(segGeo, m); o.userData.r = r; o.visible = false; fx.add(o); return o; };
+  const makeTruckCrane = () => { const g = new THREE.Group(), bx = (w, h, d, m, x, y, z, par) => { const o = mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); par.add(o); return o; };
+    bx(13.4, .9, 2.75, Mx.yel, 0, 1.55, 0, g); bx(13.6, .45, 2.3, Mx.steel, 0, .95, 0, g); bx(1.9, 1.75, 1.2, Mx.yel, 5.85, 2.55, .75, g);
+    [-5.3, -3.9, -2.5, 3.0, 4.4].forEach(x => [-1.1, 1.1].forEach(z => { const w = mesh(new THREE.CylinderGeometry(.62, .62, .55, 12), Mx.steel); w.rotation.x = Math.PI / 2; w.position.set(x, .62, z); g.add(w); }));
+    [4.0, -6.0].forEach(x => [-1, 1].forEach(sg => { bx(.42, .38, 5.6, Mx.yel, x, 1.25, sg * 2.8, g); bx(.95, .1, .95, Mx.steel, x, .05, sg * 5.4, g); }));
+    const tur = new THREE.Group(); tur.position.set(-2.5, 2.0, 0); g.add(tur); bx(5.0, .9, 2.6, Mx.yel, -.8, .45, 0, tur); bx(1.5, 1.5, 2.6, Mx.steel, -3.0, 1.0, 0, tur); bx(1.7, 1.55, .95, Mx.yel, 1.1, 1.2, 1.05, tur);
+    const piv = new THREE.Group(); piv.position.set(-1.4, 1.5, 0); tur.add(piv); bx(BL, .8, .76, Mx.yel, BL / 2, 0, 0, piv);
+    const tip = new THREE.Object3D(); tip.position.set(BL + .2, -.45, 0); piv.add(tip); return { g, tur, piv, tip }; };
+  const makeTrailer = () => { const g = new THREE.Group(), bx = (w, h, d, m, x, y, z) => { const o = mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); };
+    bx(7.2, .55, 2.45, Mx.steel, -12, 1.05, 0); bx(2.2, 2.4, 2.45, Mx.white, -13.5, 2.3, 0); bx(4.2, .45, 2.45, Mx.steel, 11.5, 1.0, 0); const pole = mesh(segGeo, Mx.steel); pole.scale.set(.12, .12, 22); pole.position.set(0, 1.2, 0); pole.rotation.y = Math.PI / 2; g.add(pole); g.visible = false; fx.add(g); return g; };
+  G.cranes = G.girLanes.map((ln, i) => { if (!ln.length) return null;
+    const C = [makeTruckCrane(), makeTruckCrane()], o = new THREE.Group(); o.add(C[0].g, C[1].g);
+    const e = addEl({ id: `CRANE-${i}`, name: `Truck crane 110 t × 2 ยกคาน I-Girder (ชุด ${i + 1})`, cat: 'crane', grp: L2('งานชั่วคราว: เครนยกคาน', 'Temp: girder cranes'), obj: o, temp: true, start: ln[0].g[0] - 2 * DAY, finish: ln[0].g[0], rmS: ln.at(-1).g[1], rmE: ln.at(-1).g[1] + 2 * DAY,
+      src: SRC_A + ' – วิธีตาม MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 (I-girder 4D)', dwg: 'MS S1/01 Rev.2 · Lifting plan', noShadow: true });
+    const lb = label(L2(`เครนยกคาน ชุด ${i + 1} (110 t × 2)`, `Girder cranes set ${i + 1} (110 t × 2)`), V3(0, 0, 0), '#ffd43b', 'cr' + i, 'temp', .6); lb.el = e;
+    return { e, ln, C, lb, ropes: [seg(.05, Mx.steel), seg(.05, Mx.steel)], tr: makeTrailer() }; }).filter(Boolean);
+  // lifting times: day 1 of the span window, girder k at 07:00 + 1.25 h·k (+1 h crane re-positioning after half of the girders)
+  spans.forEach(S => { const d0 = new Date(S.g[0]); d0.setHours(0, 0, 0, 0); let t0 = d0.getTime() + 7 * HR; if (t0 < S.g[0]) t0 += DAY; const n = S.gl.length;
+    S.lift = S.gl.map((m, k) => t0 + (1.25 * k + (k >= Math.ceil(n / 2) ? 1 : 0)) * HR); S.liftEnd = S.lift.at(-1) + HR; });
+  G.spans = spans; G.HR = HR; G.BL = BL;
+  /* piling: rig over the pile being bored, temporary casing, rebar cage + service crane, silo / bentonite plant per zone */
+  const cageM = new THREE.MeshStandardMaterial({ color: 0xd9480f, wireframe: true });
+  G.rigs.forEach(r => { r.cas = mesh(new THREE.CylinderGeometry(1, 1, 3.2, 14, 1, true), Mx.sheet); r.cas.visible = false; fx.add(r.cas);
+    r.cage = mesh(new THREE.CylinderGeometry(.55, .55, 12, 8, 6), cageM); r.cage.visible = false; fx.add(r.cage);
+    const sc = makeTruckCrane(); sc.g.scale.setScalar(.8); sc.g.visible = false; fx.add(sc.g); r.svc = sc;
+    r.lb = label(L2('Rig เจาะเข็ม', 'Piling rig'), V3(0, 0, 0), '#ffd43b', 'rig' + r.e.id, 'temp', .55); r.lb.el = r.e; });
+  const silo = (x, z, a, zn, s, f) => { const g = new THREE.Group(); [-3, 3].forEach(u => { const c = mesh(new THREE.CylinderGeometry(2.4, 2.4, 9, 16), Mx.white); c.position.set(u, 8.5, 0); g.add(c); const cn = mesh(new THREE.ConeGeometry(2.4, 3, 16), Mx.white); cn.rotation.x = Math.PI; cn.position.set(u, 2.5, 0); g.add(cn); });
+    const pl = mesh(new THREE.BoxGeometry(6, 2.6, 2.6), mat(0x1c7ed6)); pl.position.set(0, 1.3, 5.5); g.add(pl); const tk = mesh(new THREE.BoxGeometry(10, 2.2, 4), mat(0x4dabf7)); tk.position.set(10, 1.1, 0); g.add(tk);
+    g.position.set(x, 0, z); g.rotation.y = -a;
+    const e = addEl({ id: 'SILO-' + zn, name: `ไซโล + Bentonite plant · Zone ${zn}`, cat: 'rig', grp: L2('งานชั่วคราว: Rig เจาะเข็ม', 'Temp: piling rigs'), obj: g, temp: true, start: s - 10 * DAY, finish: s - 3 * DAY, rmS: f + 5 * DAY, rmE: f + 12 * DAY, src: SRC_A + ' – ตำแหน่งสมมติ', noShadow: true });
+    label(L2(`Bentonite plant Zone ${zn}`, `Bentonite plant Zone ${zn}`), V3(x, 16, z), '#4dabf7', 'silo' + zn, 'temp', .7).el = e; };
+  Object.entries({ '3-1': 6560, '3-2': 7880, '3-4': 10180, '3-5': 10700 }).forEach(([zn, st]) => { const P = G.pileEls.filter(q => q.p.zone === zn); if (!P.length) return;
+    const s = Math.min(...P.map(q => q.s)), f = Math.max(...P.map(q => q.f)), a = axisAt(st, zn === '3-1' ? 46 : 36); silo(a.x, a.z, a.a, zn, s, f); });
+  /* ---------- clearing + access / haul roads per zone (layout as Sec.4: clearing strip + 7 m haul road on both sides) – assumed, no Sec.3 access plan ---------- */
+  {
+    const ZR = {}; PIERS.forEach(p => { const z = ZR[p.zone] || (ZR[p.zone] = { lo: 1e9, hi: -1e9 }); z.lo = Math.min(z.lo, p.sta); z.hi = Math.max(z.hi, p.sta); });
+    const ZK = Object.keys(ZR).sort(); ZK.forEach((k, i) => { ZR[k].a = i ? (ZR[ZK[i - 1]].hi + ZR[k].lo) / 2 : 5961.474; ZR[k].b = i < ZK.length - 1 ? (ZR[k].hi + ZR[ZK[i + 1]].lo) / 2 : 11040.474; });
+    let half = st => { let best = null; PIERS.forEach(p => { if (!best || Math.abs(p.sta - st) < Math.abs(best.sta - st)) best = p; }); const S_ = best.strips.length ? best.strips : [[-14.5, 14.5]]; return [Math.min(...S_.map(q => q[0])), Math.max(...S_.map(q => q[1]))]; };
+    const ext = p => { const S_ = p.strips.length ? p.strips : [[-14.5, 14.5]]; return [Math.min(...S_.map(q => q[0])), Math.max(...S_.map(q => q[1]))]; };
+    const PS = PIERS.slice().sort((a, b) => a.sta - b.sta);
+    half = st => { let i = 0; while (i < PS.length - 2 && PS[i + 1].sta < st) i++; const A = PS[i], B = PS[i + 1], u = Math.max(0, Math.min(1, (st - A.sta) / (B.sta - A.sta || 1))), a = ext(A), b = ext(B);
+      // widen to the wider pier for 20 m before a width change, then taper (smooth haul roads)
+      return [Math.min(a[0] + (b[0] - a[0]) * u, a[0], b[0]) * .5 + (a[0] + (b[0] - a[0]) * u) * .5, Math.max(a[1] + (b[1] - a[1]) * u, a[1], b[1]) * .5 + (a[1] + (b[1] - a[1]) * u) * .5]; };
+    const earth = mat(0x9c7a4f, { roughness: 1, transparent: true, opacity: .5, depthWrite: false }), grav = mat(0xd8c9a3, { roughness: 1 });
+    const strip = (sts, fo, y, m) => { const pos = [], idx = []; sts.forEach((st, i) => { const [o0, o1] = fo(st), A = axisAt(st, o0), B = axisAt(st, o1); pos.push(A.x, y, A.z, B.x, y, B.z); if (i) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); } });
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); const o = mesh(g, m); o.material.side = THREE.DoubleSide; return o; };
+    const firstWork = zn => Math.min(...PIERS.filter(p => p.zone === zn).flatMap(p => ['PILE', 'FT', 'COL'].map(a => assign[a][p.n]?.[0] ?? Infinity)));
+    const HOK = { '3-1': 'Z31:HO', '3-2': 'Z32:HO' };
+    ZK.forEach(zn => { const Z = ZR[zn], sts = []; for (let st = Z.a; st < Z.b; st += 10) sts.push(st); sts.push(Z.b);
+      const fw = firstWork(zn), ho = HOK[zn] ? MS(HOK[zn])[0] : null, s0 = Math.min(ho ?? Infinity, fw - 30 * DAY), dk = Math.max(...spans.filter(S => S.A.zone === zn || S.B.zone === zn).map(S => S.d[1]), fw + 400 * DAY);
+      const cl = new THREE.Group(), cm = strip(sts, st => { const [l, r] = half(st); return [l - 13, r + 13]; }, .06, earth); cm.renderOrder = 4; cl.add(cm);
+      const hr = new THREE.Group(); [-1, 1].forEach(sd => hr.add(strip(sts, st => { const h = half(st)[sd > 0 ? 1 : 0], o = h + sd * 8; return [o - 3.5, o + 3.5]; }, .12, grav)));
+      const src = SRC_A + ' – ไม่มีแผนเข้าพื้นที่ตอนที่ 3: วางแบบเดียวกับตอนที่ 4 (เคลียร์ริ่ง + ถนน Access 7 ม. สองฝั่ง ภายในเขตก่อสร้าง)';
+      addEl({ id: 'CLR-' + zn, name: `Clearing + ปรับพื้นที่ Zone ${zn}`, cat: 'haul', grp: L2('Clearing + ถนน Access', 'Clearing + access roads'), obj: cl, temp: true, start: s0 - 14 * DAY, finish: s0, rmS: dk + 20 * DAY, rmE: dk + 45 * DAY, src, noShadow: true, loc: `Sta.${fmtSta(Z.a)} – ${fmtSta(Z.b)}` });
+      addEl({ id: 'HAUL-' + zn, name: `ถนน Access / Haul road 7 ม. สองฝั่ง Zone ${zn}`, cat: 'haul', grp: L2('Clearing + ถนน Access', 'Clearing + access roads'), obj: hr, temp: true, start: s0 - 7 * DAY, finish: s0 + 7 * DAY, rmS: dk + 20 * DAY, rmE: dk + 45 * DAY, src, noShadow: true, loc: `Sta.${fmtSta(Z.a)} – ${fmtSta(Z.b)}` });
+      Z.s0 = s0; Z.dk = dk; });
+    // entry / exit gates where the haul roads meet public roads (OSM crossings of named or tertiary+ roads)
+    const seen = {}; SITE.xing.filter(x => x[0] === 'road' && (x[2] !== 'residential' || /นิมิต|ไมตรี|ราษฎร์/.test(x[1]))).forEach(x => { const zn = ZK.find(k => x[3] >= ZR[k].a && x[3] < ZR[k].b); if (!zn) return; const key = x[1] + zn; if (seen[key]) return; seen[key] = 1;
+      const Z = ZR[zn], g = new THREE.Group();
+      [-1, 1].forEach(sd => { const h = half(x[3])[sd > 0 ? 1 : 0] + sd * 8; [-6, 6].forEach(dd => { const q = axisAt(x[3] + dd, h); const post = mesh(new THREE.BoxGeometry(.4, 3, .4), Mx.orange); post.position.set(q.x, 1.5, q.z); g.add(post); });
+        const q = axisAt(x[3] - 8, h + sd * 4.5), c = api.cnv(256, 128, (gx, w, hh) => { gx.fillStyle = '#1c7ed6'; gx.fillRect(0, 0, w, hh); gx.fillStyle = '#fff'; gx.font = 'bold 30px sans-serif'; gx.textAlign = 'center'; gx.fillText('ทางเข้า-ออก', w / 2, 52); gx.fillText('รถก่อสร้าง', w / 2, 96); });
+        const sg = mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: api.ctex(c), side: THREE.DoubleSide })); sg.position.set(q.x, 2.4, q.z); sg.rotation.y = -q.a; g.add(sg); });
+      const e = addEl({ id: `GATE-${zn}-${x[3].toFixed(0)}`, name: `ทางเข้า-ออก รถก่อสร้าง · ${x[1]} (Sta.${fmtSta(x[3])})`, cat: 'tm', grp: L2('การจัดการจราจร', 'Traffic management'), obj: g, temp: true, start: Z.s0 - 7 * DAY, finish: Z.s0, rmS: Z.dk + 20 * DAY, rmE: Z.dk + 30 * DAY, src: SRC_A + ' – จุดเข้า-ออกที่ถนนสาธารณะตัดแนว (OSM)', noShadow: true });
+      const q = axisAt(x[3], half(x[3])[1] + 18); label(L2(`ทางเข้า-ออก · ${x[1]}`, `Site access · ${x[1]}`), V3(q.x, 9, q.z), '#4dabf7', 'gate' + key, 'tm', .7).el = e; });
+  }
   /* ---------- traffic management: Nimit Mai Rd. ---------- */
   {
     const roads = SITE.roads.filter(r => r[0] === 'ถนนนิมิตใหม่'), o = new THREE.Group(), barr = Mx.red, [a] = MS('Z32:FT-BC'), b = MS('BC')[1];
@@ -637,6 +708,7 @@ function buildProject(api) {
     addEl({ id: 'EGAT-NEW', name: 'กฟผ. ยกระดับสาย 500 kV (เสาสูงขึ้น – ความสูงสมมติ)', cat: 'util', grp: L2('สาธารณูปโภค: กฟผ. 500 kV', 'Utilities: EGAT 500 kV'), obj: neu, start: es, finish: ef, src: SRC_P + ' + ' + SRC_A + ' (ความสูงเสา)', noShadow: true });
     label(L2('สายส่ง 500 kV กฟผ.', 'EGAT 500 kV line'), V3(X_EG.x + 40, 60, X_EG.z - 40), '#adb5bd', 'egat', 'road', 1.1);
   }
+  window.__s3 = G;   // debug / QA hook
   /* ---------- info tab ---------- */
   const nFt = Object.keys(FB).filter(k => k.endsWith(':footing')).length, nSeg = Object.keys(FB).filter(k => k.startsWith('BC:')).length;
   const sh = Object.entries(seqNote).map(([a, l]) => `${a}: ${l.length} ตอม่อ`).join(' · ');
@@ -654,7 +726,7 @@ function buildProject(api) {
 <li>BC: ลำดับตาม Stage 1–5 ในแบบ (Pier table → Traveller → A…G ละ 5 ม. → Closure 2 ม. → ปลายช่วงข้างบน Falsework) ภายในช่วงวันที่ของงาน BC ในแผน · กล่องซ้ายก่อนขวา (สมมติ)</li>
 <li>คาน I-Girder/Deck: วาดจากความกว้างหัวเสา/คานขวางใน Revit · ลึก 1.70 + พื้น 0.20 ม. (EL SUB TYPE) · จำนวนคานต่อช่วงสมมติ (~2.45 ม./ตัว)</li>
 <li>Ramp: ฐานราก/เสา/หัวเสาวาดจากตาราง GA (ขนาดหน้าตัดสมมติ) · ช่วงสุดท้ายลงเสานอกของตอม่อ IYI MLP1-233</li>
-<li>ความสูงเสาส่ง 500 kV และการจัดการจราจร ถ.นิมิตใหม่ เป็นภาพสมมติ</li></ul>
+<li>งานเข็ม: เจาะทีละต้นภายในช่วงวันของตอม่อ · Rig + Casing + กรงเหล็ก + เครนบริการ + Bentonite plant ต่อ Zone (ตำแหน่งสมมติ แบบตอนที่ 4)</li><li>ยกคาน I-Girder ตามวิธี MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 (I-girder 4D): Truck crane 110 t × 2 ที่ปลายช่วงทั้งสองข้าง · รถหางสาลี่ส่งคานทีละตัวชิดขอบนอก · ยกจากคานริมนอกเข้าใน 07:00–16:00 ของวันแรกของช่วง</li><li>Clearing + ถนน Access 7 ม. สองฝั่ง และจุดเข้า-ออกที่ถนนสาธารณะตัดแนว – ไม่มีแผนเข้าพื้นที่ตอนที่ 3 จึงวางแบบเดียวกับตอนที่ 4 (สมมติ) · เริ่มเมื่อรับมอบพื้นที่ / 30 วันก่อนงานแรกของ Zone</li><li>ความสูงเสาส่ง 500 kV และการจัดการจราจร ถ.นิมิตใหม่ เป็นภาพสมมติ</li></ul>
 <h3>พิกัด</h3><p class="mut" style="font-size:11.5px">UTM WGS84 47N − (693000, 1540700) · x = ตะวันออก, z = ใต้, y = MSL − 1.0 ม. · ซ้าย/ขวา มองตามทิศ Station (ไปทางตะวันออก) – ซ้าย = ฝั่งเหนือ</p>`,
     `<h3>Sources</h3><ul class="mut" style="padding-left:16px;font-size:11.5px">
 <li><b>Programme</b>: 3.2 CPM Rev. 31-10-2026.mpp (read through MS Project) – SECTION 3 (Zones 3-1…3-5, girders, balanced cantilever, deck) + IC2 Hatairat · % complete in the file is 0, so the plan is shown</li>
@@ -669,18 +741,47 @@ function buildProject(api) {
 <li>BC: order per the drawing's stages 1–5 (pier table → travellers → A…G 5 m → 2 m closure → side-span ends on falsework) inside the programme's BC window · left box before right (assumed)</li>
 <li>I-girders / deck: drawn from the Revit pier-head / crossbeam widths · girder 1.70 + slab 0.20 m (EL SUB TYPE) · girder count per span assumed (~2.45 m spacing)</li>
 <li>Ramps: footings / columns / crossheads from the GA tables (section sizes assumed) · last span lands on the outer column of IYI pier MLP1-233</li>
-<li>500 kV tower heights and the Nimit Mai Rd. traffic management are indicative</li></ul>
+<li>Piling: piles bored one at a time inside the pier window · rig + casing + rebar cage + service crane + bentonite plant per zone (positions assumed, as Sec.4)</li><li>I-girder erection per MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 (I-girder 4D): 2 × 110 t truck cranes at the span ends · pole trailer delivers one girder at a time along the outer edge · lifted outer girder first, 07:00–16:00 on day 1 of the span window</li><li>Clearing + 7 m access roads on both sides and gates where public roads cross – no Sec.3 access plan, laid out as Sec.4 (assumed) · from handover / 30 days before the zone's first work</li><li>500 kV tower heights and the Nimit Mai Rd. traffic management are indicative</li></ul>
 <h3>Coordinates</h3><p class="mut" style="font-size:11.5px">UTM WGS84 47N − (693000, 1540700) · x = east, z = south, y = MSL − 1.0 m · left/right looking up-station (east) – left = north side</p>`];
 }
 
 function updateProject(api, t, dt) {
   const fg = api.scene.fog; if (fg && !fg._s3) { fg.near *= 4; fg.far *= 4; fg._s3 = 1; }
-  // rigs at the pier being bored in their lane
-  (G.rigs || []).forEach(({ e, ln }) => { if (!e.obj.visible) return; let cur = ln[0]; for (const q of ln) if (t >= q.s) cur = q; const c = cur.p.cols[0], a = axisAt(cur.p.sta);
-    e.obj.position.set(c[1] + a.dz * 6, 0, c[2] - a.dx * 6); e.obj.rotation.y = -a.a; });
-  // girder cranes at the span being erected
-  (G.cranes || []).forEach(({ e, ln }) => { if (!e.obj.visible) return; let cur = ln[0]; for (const S of ln) if (t >= S.g[0]) cur = S; const s = (cur.A.sta + cur.B.sta) / 2, p = axisAt(s);
-    e.obj.position.set(p.x, 0, p.z); e.obj.rotation.y = -p.a + Math.PI / 2; });
+  const HR = G.HR || 3600000, V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const setSeg = (m, A, B) => { m.visible = true; m.position.copy(A).add(B).multiplyScalar(.5); m.scale.set(m.userData.r, m.userData.r, Math.max(A.distanceTo(B), .01)); m.lookAt(B); };
+  // piles: bored one after another inside the pier's window
+  (G.pileEls || []).forEach(q => { const st = t < q.s ? 0 : t >= q.f ? 2 : 1; if (q._st === st && st !== 1) return;
+    const n = q.o.children.length, x = (t - q.s) / (q.f - q.s) * n;
+    q.o.children.forEach((m, i) => { const v = st === 2 ? 1 : st === 0 ? 0 : Math.min(1, Math.max(0, x - i)); m.visible = v > 0; m.scale.y = Math.max(v, .001); });
+    q._st = st; q.cur = st === 1 ? Math.min(n - 1, Math.floor(x)) : -1; q.u = x - Math.floor(x); });
+  const PE = G._PE || (G._PE = Object.fromEntries((G.pileEls || []).map(q => [q.p.n, q])));
+  (G.rigs || []).forEach(r => { const { e, ln } = r; if (!r.cas) return; [r.cas, r.cage, r.svc.g].forEach(o => o.visible = false); if (!e.obj.visible) return;
+    let cur = ln[0]; for (const q of ln) if (t >= q.s) cur = q; const pe = PE[cur.p.n], a = axisAt(cur.p.sta);
+    const k = pe && pe.cur >= 0 ? pe.cur : (pe && t >= cur.f ? pe.piles.length - 1 : 0), P = pe ? pe.piles[k] : [cur.p.cols[0][1], cur.p.cols[0][2], 0, -40, .6];
+    e.obj.rotation.y = -a.a; e.obj.position.set(P[0] - 3.2 * a.dx, 0, P[1] - 3.2 * a.dz); r.lb.s.position.set(P[0], 31, P[1]);
+    if (pe && pe.cur >= 0) { r.cas.visible = true; r.cas.scale.set(P[4] + .05, 1, P[4] + .05); r.cas.position.set(P[0], .5, P[1]);
+      if (pe.u > .4 && pe.u < .8) { r.cage.visible = true; r.cage.position.set(P[0] - 7 * a.dz, .7, P[1] + 7 * a.dx); r.cage.rotation.set(0, -a.a, Math.PI / 2);
+        r.svc.g.visible = true; r.svc.g.position.set(P[0] - 9 * a.dx - 6 * a.dz, 0, P[1] - 9 * a.dz + 6 * a.dx); r.svc.g.rotation.y = -a.a; } } });
+  // girder erection: girders lifted one by one from the pole trailer; cranes stand at the two ends of the active span
+  const liftPos = (m, u, from) => { const F = m.userData.fin; m.quaternion.copy(F.q); if (u >= 1) { m.position.copy(F.C); return; }
+    const top = F.C.y + 3, f1 = Math.min(1, Math.max(0, (u - .2) / .55)); m.position.set(from.x + (F.C.x - from.x) * f1, u < .2 ? from.y + (top - from.y) * u / .2 : u < .75 ? top : top + (F.C.y - top) * (u - .75) / .25, from.z + (F.C.z - from.z) * f1); };
+  const trailerAt = S => { const s = (S.A.sta + S.B.sta) / 2, o = S.mid.ea + (S.mid.eb - S.mid.ea) * .5 + S.outer * 5, p = axisAt(s, o); return { p: V(p.x, 1.4, p.z), a: p.a }; };
+  (G.spans || []).forEach(S => { if (!S.lift) return; const act = t >= S.g[0] && t < S.liftEnd;
+    if (!act && S._lf === 2) return; const T = trailerAt(S).p;
+    S.gl.forEach((m, k) => { if (!act) { m.visible = true; liftPos(m, 1); return; } const u = (t - S.lift[k]) / HR; m.visible = u > -.6; liftPos(m, Math.max(0, Math.min(1, u)), T); });
+    S._lf = act ? 1 : 2; });
+  (G.cranes || []).forEach(cr => { const { e, ln, C } = cr; cr.ropes.forEach(r => r.visible = false); cr.tr.visible = false; if (!e.obj.visible) return;
+    let S = ln[0]; for (const q of ln) if (t >= q.g[0]) S = q;
+    const k = S.lift.findIndex(x => t < x + HR), lifting = t >= S.g[0] && t < S.liftEnd && k >= 0, m = S.gl[lifting ? k : S.gl.length - 1], F = m.userData.fin;
+    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(F.q);
+    [[S.A.sta + 10, S.mid.a], [S.B.sta - 10, S.mid.b]].forEach(([st, off], i) => { const c = C[i], p = axisAt(st, off); c.g.position.set(p.x, 0, p.z); c.g.rotation.y = -p.a + (i ? Math.PI : 0); c.g.updateMatrixWorld(true);
+      const end = m.position.clone().addScaledVector(dir, (i ? 1 : -1) * (F.L / 2 - 1.5)); end.y += 2.3;
+      const P = new THREE.Vector3(); c.piv.getWorldPosition(P); c.tur.rotation.y = 0; c.g.updateMatrixWorld(true); c.piv.getWorldPosition(P);
+      const yawW = Math.atan2(-(end.z - P.z), end.x - P.x); c.tur.rotation.y = yawW - c.g.rotation.y;
+      const r = Math.hypot(end.x - P.x, end.z - P.z); c.piv.rotation.z = Math.acos(Math.max(.15, Math.min(1, r / BL_())));
+      if (lifting) { c.g.updateMatrixWorld(true); const tp = new THREE.Vector3(); c.tip.getWorldPosition(tp); setSeg(cr.ropes[i], tp, end); } });
+    cr.lb.s.position.set(C[0].g.position.x, 30, C[0].g.position.z);
+    if (lifting && (t - S.lift[k]) / HR < .25) { const T = trailerAt(S); cr.tr.visible = true; cr.tr.position.set(T.p.x, 0, T.p.z); cr.tr.rotation.y = -T.a; } });
   // form travellers at the tip of the latest cast segment of their arm (L box, then R box)
   (G.trav || []).forEach(({ e, pier, arm }) => { if (!e.obj.visible) return;
     const side = G.bc.some(b => b.side === 'R' && b.pier === pier && b.tag !== 'PT' && t >= b.e.start) ? 'R' : 'L';
@@ -690,7 +791,7 @@ function updateProject(api, t, dt) {
     mine.forEach(b => { if (t >= b.e.start) s = b.s + dir * 2.5; });
     const p = axisAt(s, side === 'L' ? -7.65 : 7.65); e.obj.position.set(p.x, Y_(13.5) + .2, p.z); e.obj.rotation.y = -p.a + Math.PI / 2; });
 }
-const Y_ = msl => msl - GY0;
+const Y_ = msl => msl - GY0, BL_ = () => G.BL || 21.6;
 /* <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
    END OF PROJECT BLOCK
    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< */
