@@ -553,38 +553,71 @@ function buildProject(api) {
     addEl({ id: `DECK:${S.id}`, name: `Deck + Parapet ${loc}`, cat: 'deck', grp: L2(`Zone ${z} · Deck + Parapet`, `Zone ${z} · deck + parapets`), obj: S.dk, kind: 'cast', start: S.d[0], finish: S.d[1], src: S.dsrc, dwg: 'ID-2', loc }); });
   G.girLanes = [0, 1, 2].map(c => spans.filter(S => S.lane === c).sort((p, q) => p.g[0] - q.g[0]));
   /* ---------- balanced cantilever (Revit segments) – BC sheet 06 Stage 1–5 ---------- */
-  const [bs, bf] = MS('BC'), BX = x => bs + (bf - bs) * x, SEGS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-  const bcWin = (tag, side) => { const base = side === 'L' ? .14 : .46, t = tag.replace("'", '');
-    if (tag === 'PT') return side === 'L' ? [BX(0), BX(.07)] : [BX(.05), BX(.12)];
-    const i = SEGS.indexOf(t); if (i >= 0) return [BX(base + i * .044), BX(base + (i + 1) * .044)];
-    if (tag === 'H') return side === 'L' ? [BX(.78), BX(.81)] : [BX(.81), BX(.84)];
-    return [BX(.85), BX(.95)]; };   // H' + END SPAN on falsework (stage 4)
+  /* Balanced cantilever – construction method of the Kiak Kai 2 cast-in-situ BC (assets/examples/kiakkai_extradosed_bridge.html):
+     tower crane at each pier → pier table on falsework (8 m, BC sheet 26) → form travellers assembled on the pier table, one per arm →
+     segments A…G (5 m) cast in balance on both arms, 13-day cycle (launch D1 · rebar/forms D2–D9 · concrete D10 · strands D12 · stressing D13) →
+     end span on scaffolding → side closure H′ and mid-span closure H cast from a traveller while the others are dismantled.
+     Twin boxes: left box first, then the travellers are moved to the right box (assumed). Days below fit inside the CPM 'Balance Cantilever' window. */
+  const [bs, bf] = MS('BC'), FAC = Math.min(1, (bf - bs) / DAY / 380), Dd = d => bs + d * FAC * DAY, SEGS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'], CYC = 13, BOXT = { L: 80, R: 205 };
+  const bcWin = (tag, side) => { const t0 = BOXT[side], t = tag.replace("'", ''), i = SEGS.indexOf(t);
+    if (tag === 'PT') return [Dd(15), Dd(60)];
+    if (i >= 0) return [Dd(t0 + CYC * i), Dd(t0 + CYC * (i + 1))];
+    if (t === 'H') return [Dd(t0 + 7 * CYC + 2), Dd(t0 + 7 * CYC + 14)];
+    return side === 'L' ? [Dd(135), Dd(165)] : [Dd(265), Dd(290)]; };   // end span on scaffolding
+  G.BCD = { Dd, BOXT, CYC };
   G.bc = [];
-  Object.keys(FB).filter(k => k.startsWith('BC:')).forEach(k => { const [tag, pier, side, s] = FB[k].bc; if (tag === 'COL' || tag === 'BB') return;
+  Object.keys(FB).filter(k => k.startsWith('BC:')).forEach(k => { let [tag, pier, side, s] = FB[k].bc; if (tag === 'COL' || tag === 'BB') return;
+    const mt = (FB[k].nm || '').trim().match(/SEGMENT (END SPAN|[A-H]'?)$/i); if (mt) tag = mt[1].toUpperCase().replace(' ', '');   // Revit name "SEGMENT A SEGMENT A'" = segment A′
     const [a, b] = bcWin(tag, side), o = fobj([k], Mx.seg), nm = tag === 'PT' ? 'Pier table' : tag === 'ENDSPAN' ? 'End span (falsework)' : `Segment ${tag}`;
     const arm = tag === 'PT' ? '' : (tag.includes("'") || tag === 'ENDSPAN' ? 'side span' : 'main span');
-    const e = addEl({ id: k, name: `BC MLP1-${pier}${side} · ${nm}`, cat: tag === 'PT' ? 'pt' : 'seg', grp: L2(`BC ถ.นิมิตใหม่ · กล่อง${side === 'L' ? 'ซ้าย' : 'ขวา'}`, `BC Nimit Mai · ${side} box`), obj: o, kind: 'cast', start: a, finish: b,
-      src: SRC_P + ' (BC window) + ' + SRC_A + ' ลำดับตาม BC Stage 1–5', dwg: 'Contract_Balance Section 3 (sh. 6, 25–28)', loc: `Sta.${fmtSta(s)} · ${arm}`, qty: { L: tag === 'PT' ? 8 : tag === 'H' ? 2 : 5, vol: +(o.userData.vol || 0).toFixed(1) } });
+    const e = addEl({ id: k, name: `BC MLP1-${pier}${side} · ${nm}`, cat: tag === 'PT' ? 'pt' : 'seg', cast: a + (b - a) * (tag === 'PT' ? .8 : 9.5 / 13), grp: L2(`BC ถ.นิมิตใหม่ · กล่อง${side === 'L' ? 'ซ้าย' : 'ขวา'}`, `BC Nimit Mai · ${side} box`), obj: o, kind: 'cast', start: a, finish: b,
+      src: SRC_P + ' (ช่วง BC) + ' + SRC_A + ' ลำดับตามวิธีเกียกกาย 2 / BC Stage 1–5', dwg: 'Contract_Balance Section 3 (sh. 6, 25–28)', loc: `Sta.${fmtSta(s)} · ${arm}`, qty: { L: tag === 'PT' ? 8 : tag === 'H' ? 2 : 5, vol: +(o.userData.vol || 0).toFixed(1) } });
     G.bc.push({ e, tag, pier, side, s }); });
   // wearing course + parapets on the two BC boxes (same lanes as the I-girder decks either side), after the last BC stage
   { const o = new THREE.Group(), y = Y(13.5) - .02; [-7.65, 7.65].forEach(cz => { for (let st = 7717.474; st < 7897.4; st += 10) { const s1 = Math.min(st + 10, 7897.474);
       const c = [[st, cz - 7.29], [st, cz + 7.29], [s1, cz + 7.29], [s1, cz - 7.29]].map(([sa, off]) => { const q = axisAt(sa, off); return V3(q.x, y, q.z); });
       o.add(mesh(quadSlab(c.map(v => v.clone().add(V3(0, .085, 0))), .08), Mx.asph));
       [[0, 3], [1, 2]].forEach(([i, j]) => { const P = c[i], Q = c[j], m = mesh(new THREE.BoxGeometry(.45, .95, P.distanceTo(Q)), Mx.concG); m.position.copy(P).add(Q).multiplyScalar(.5).add(V3(0, .45, 0)); m.lookAt(Q.clone().add(V3(0, .45, 0))); o.add(m); }); } });
-    addEl({ id: 'BC:DECK', name: 'BC ถ.นิมิตใหม่ · ผิวทาง + Parapet บนกล่อง BC ทั้ง 2 กล่อง', cat: 'deck', grp: L2('BC ถ.นิมิตใหม่ · ผิวทาง + Parapet', 'BC Nimit Mai · surfacing + parapets'), obj: o, kind: 'cast', start: BX(.96), finish: BX(1) + 14 * DAY, src: SRC_P + ' (หลัง BC) – ' + SRC_A, dwg: 'BC sheet 26 (typical section 14.58 m)', loc: 'MLP1-267 – 270' }); }
-  // form travellers (one pair per pier, moved from the L box to the R box), animated to the active segment
-  const trav = () => { const g = new THREE.Group(), red = Mx.red; [[-2.6, 0], [2.6, 0]].forEach(([u]) => { const t = mesh(new THREE.BoxGeometry(.5, 3.4, 7.5), red); t.position.set(u, 3.2, 0); g.add(t); });
-    const top = mesh(new THREE.BoxGeometry(6.5, .5, .5), red); top.position.set(0, 5, -2.5); g.add(top); const top2 = top.clone(); top2.position.z = 2.5; g.add(top2);
-    const pl = mesh(new THREE.BoxGeometry(15, .3, 6), Mx.yel); pl.position.y = -4.9; g.add(pl); const net = mesh(new THREE.BoxGeometry(15, 4.8, 6.2), new THREE.MeshStandardMaterial({ color: 0xffa94d, transparent: true, opacity: .18, side: THREE.DoubleSide })); net.position.y = -2.4; g.add(net); return g; };
+    addEl({ id: 'BC:DECK', name: 'BC ถ.นิมิตใหม่ · ผิวทาง + Parapet บนกล่อง BC ทั้ง 2 กล่อง', cat: 'deck', grp: L2('BC ถ.นิมิตใหม่ · ผิวทาง + Parapet', 'BC Nimit Mai · surfacing + parapets'), obj: o, kind: 'cast', start: Dd(320), finish: Dd(345), src: SRC_P + ' (หลัง BC) – ' + SRC_A, dwg: 'BC sheet 26 (typical section 14.58 m)', loc: 'MLP1-267 – 270' }); }
+  // form traveller – overhead truss type (as Kiak Kai FT1–FT4), sized for one 14.58 m box: rear anchored on the cast deck, front truss over the
+  // next segment, hanging platform + bottom form under it (depth follows the box: 4.50 m at the pier → 2.30 m at mid-span, sheet 26)
+  const FTM = { steel: mat(0xc92a2a, { metalness: .4, roughness: .55 }), plat: Mx.yel, form: mat(0x8a6a4a, { roughness: .9 }), hang: Mx.steel };
+  const makeFT = () => { const g = new THREE.Group(), fr = [-5.2, -1.8, 1.8, 5.2];
+    fr.forEach(z => { const P = (x, y) => V3(x, y, z); g.add(api.member(P(-8, .45), P(6, .45), .5, FTM.steel), api.member(P(5.5, .45), P(5.5, 6.4), .5, FTM.steel), api.member(P(-8, .45), P(5.5, 6.4), .4, FTM.steel), api.member(P(-1.5, .45), P(5.5, 6.4), .3, FTM.steel)); });
+    g.add(api.member(V3(5.5, 6.6, -7.6), V3(5.5, 6.6, 7.6), .8, FTM.steel), api.member(V3(-8, .7, -6), V3(-8, .7, 6), .5, FTM.steel));
+    const hang = new THREE.Group(); g.add(hang); g.userData.hang = hang;
+    [-7.1, -4.5, -1.5, 1.5, 4.5, 7.1].forEach(z => { const r = mesh(new THREE.BoxGeometry(.12, 1, .12), FTM.hang); r.position.set(5.2, 0, z); r.userData.hanger = true; hang.add(r); });
+    const plat = mesh(new THREE.BoxGeometry(6.2, .3, 8.6), FTM.plat); plat.userData.plat = true; hang.add(plat);
+    const form = mesh(new THREE.BoxGeometry(5.8, .2, 15.2), FTM.form); form.userData.form = true; hang.add(form);
+    [-4.4, 4.4].forEach(z => { const rl = mesh(new THREE.BoxGeometry(6.2, 1.1, .08), FTM.plat); rl.userData.rail = z; hang.add(rl); });
+    return g; };
+  const PSTA = { 268: 7767.474, 269: 7847.474 };
   G.trav = [];
-  [268, 269].forEach(pier => ['main', 'side'].forEach(arm => { const o = trav();
-    const e = addEl({ id: `TRAV-${pier}-${arm}`, name: `Form traveller MLP1-${pier} (${arm === 'main' ? 'ช่วงกลาง' : 'ช่วงข้าง'})`, cat: 'trav', grp: L2('งานชั่วคราว: Form traveller', 'Temp: form travellers'), obj: o, temp: true,
-      start: BX(.11), finish: BX(.14), rmS: BX(.76), rmE: BX(.78), src: SRC_A + ' – BC Stage 1–3', noShadow: true });
-    G.trav.push({ e, pier, arm }); }));
-  // falsework under the side-span ends (stage 4)
-  [[7721, 'L'], [7721, 'R'], [7893, 'L'], [7893, 'R']].forEach(([s, sd], i) => { const o = new THREE.Group(), off = sd === 'L' ? -7.65 : 7.65;
-    for (let k = -1; k <= 1; k++) for (let j = -1; j <= 1; j += 2) { const q = axisAt(s + k * 3.5, off + j * 3); const m = mesh(new THREE.BoxGeometry(1.2, Y(9.0), 1.2), Mx.yel); m.position.set(q.x, Y(9.0) / 2, q.z); o.add(m); }
-    addEl({ id: `FW-${i}`, name: `Falsework ปลายช่วงข้าง Sta.${fmtSta(s)} ${sd}`, cat: 'fw', grp: L2('งานชั่วคราว: Falsework BC', 'Temp: BC falsework'), obj: o, temp: true, start: BX(.8), finish: BX(.84), rmS: BX(.96), rmE: BX(.98), src: SRC_A + ' – BC Stage 4', noShadow: true }); });
+  ['L', 'R'].forEach(side => [268, 269].forEach(pier => ['main', 'side'].forEach(arm => {
+    const dir = (arm === 'main') === (pier === 268) ? 1 : -1, t0 = G.BCD.BOXT[side], CY = G.BCD.CYC;
+    const seq = G.bc.filter(b => b.pier === pier && b.side === side && (/^[A-G]$/.test(b.tag) && arm === 'main' || /^[A-G]'$/.test(b.tag) && arm === 'side')).sort((p, q) => Math.abs(p.s - PSTA[pier]) - Math.abs(q.s - PSTA[pier]));
+    const casts = arm === 'side' ? "H'" : pier === 268 ? 'H' : null;   // FT 268-main casts the mid-span closure, FT 269-main is dismantled first; side FTs cast H′
+    if (casts) { const c = G.bc.find(b => b.tag === casts && b.side === side && (casts === 'H' || b.pier === pier)); if (c) seq.push(c); }
+    const rmS = casts ? Dd(t0 + 7 * CY + 15) : Dd(t0 + 7 * CY), o = makeFT();
+    const e = addEl({ id: `FT-${side}-${pier}-${arm}`, name: `Form traveller MLP1-${pier} ${arm === 'main' ? 'ช่วงกลาง (main span)' : 'ช่วงข้าง (side span)'} · กล่อง${side === 'L' ? 'ซ้าย' : 'ขวา'}${casts ? ' · หล่อ Closure ' + casts : ''}`,
+      cat: 'trav', grp: L2('งานชั่วคราว: Form traveller', 'Temp: form travellers'), obj: o, temp: true, start: Dd(t0 - 18), finish: Dd(t0 - 1), rmS, rmE: rmS + 7 * FAC * DAY,
+      src: SRC_A + ' – วิธีเกียกกาย 2: ประกอบบน Pier table, ทุก Segment ย้ายไปปลาย Cantilever', dwg: 'BC sheet 6 (Stage 1–3) · Kiak Kai FT (overhead truss)', noShadow: true });
+    G.trav.push({ e, seq, dir, side, ps: PSTA[pier] }); })));
+  // falsework for the pier tables (both boxes) and scaffolding for the end spans (stage 4)
+  const towers = (s0, s1, offs, top, step = 2.5) => { const mats = []; for (let st = s0; st <= s1 + .01; st += step) offs.forEach(o => { const q = axisAt(st, o), h = top;
+      mats.push(new THREE.Matrix4().compose(V3(q.x, h / 2, q.z), new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), -q.a), V3(1.4, h, 1.4))); });
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), M.latY || Mx.yel, mats.length); mats.forEach((m, i) => im.setMatrixAt(i, m)); const g = new THREE.Group(); g.add(im); return g; };
+  const offsBox = [-12.5, -9.5, -5.8, -2.8, 2.8, 5.8, 9.5, 12.5];
+  [268, 269].forEach(pier => addEl({ id: 'FW-PT-' + pier, name: `Falsework / Bracket ใต้ Pier table MLP1-${pier} (ทั้ง 2 กล่อง)`, cat: 'fw', grp: L2('งานชั่วคราว: Falsework BC', 'Temp: BC falsework'), obj: towers(PSTA[pier] - 3.5, PSTA[pier] + 3.5, offsBox, Y(13.5) - 4.6),
+    temp: true, start: Dd(0), finish: Dd(15), rmS: Dd(62), rmE: Dd(68), src: SRC_A + ' – วิธีเกียกกาย 2 (Falsework บนฐานราก)', dwg: 'BC sheet 6 Stage 1', noShadow: true }));
+  [['L', 120, 186], ['R', 250, 311]].forEach(([side, a, r]) => { const offs = side === 'L' ? [-12.5, -9.5, -5.8, -2.8] : [2.8, 5.8, 9.5, 12.5];
+    const g = new THREE.Group(); g.add(towers(7718.5, 7726, offs, Y(13.5) - 2.45)); g.add(towers(7889, 7896.5, offs, Y(13.5) - 2.45));
+    addEl({ id: 'SC-END-' + side, name: `นั่งร้าน / Temporary support End span กล่อง${side === 'L' ? 'ซ้าย' : 'ขวา'} (ฝั่ง MLP1-267 และ 270)`, cat: 'fw', grp: L2('งานชั่วคราว: Falsework BC', 'Temp: BC falsework'), obj: g, temp: true,
+      start: Dd(a), finish: Dd(a + 15), rmS: Dd(r), rmE: Dd(r + 6), src: SRC_A + ' – BC Stage 4 / วิธีเกียกกาย 2 (End span on scaffolding)', dwg: 'BC sheet 6 Stage 4', noShadow: true }); });
+  // tower crane at each BC pier (on the footing side, as Kiak Kai TC-P2 / TC-P3)
+  [268, 269].forEach((pier, i) => { const q = axisAt(PSTA[pier] + (i ? 6 : -6), -24), o = api.makeCrane(34, 45); o.position.set(q.x, 0, q.z);
+    const e = addEl({ id: 'TC-' + pier, name: `Tower crane MLP1-${pier} (H 34 m, jib 45 m)`, cat: 'crane', grp: L2('งานชั่วคราว: Tower crane BC', 'Temp: BC tower cranes'), obj: o, temp: true, kind: 'crane', start: Dd(-12), finish: Dd(-2), rmS: Dd(320), rmE: Dd(328), src: SRC_A + ' – วิธีเกียกกาย 2', noShadow: true });
+    label(L2(`Tower crane MLP1-${pier}`, `Tower crane MLP1-${pier}`), V3(q.x, 42, q.z), '#ffd43b', 'tc' + pier, 'temp', .7).el = e; });
   /* ---------- Ramps 01N02 / 01X02 (GA RAMP tables; positions = KMZ pier points) ---------- */
   {
     const [ps, pf] = MS('IC2:PILE'), [fs, ff] = MS('IC2:FT'), [cs, cf] = MS('IC2:COL'), [gs, gf] = MS('IC2:GIR'), [ds, df] = MS('IC2:DECK');
@@ -758,7 +791,7 @@ function buildProject(api) {
 <li>แต่ละงานใน Zone แบ่งให้ทีม (Rig/Team) ทำต่อเนื่องเป็นช่วงตอม่อ ตามลำดับ Station</li>
 <li>บังคับลำดับต่อตอม่อ: เข็ม → ฐานราก → เสา → คานขวาง (ถ้าแผนขัดกัน เลื่อนตาม – ${sh || 'ไม่มี'}) เช่น MLP1-343–346 เสา/คานขวางในแผนปี 2025 แต่เข็มหลัง กฟผ. ยกสายปลายปี 2026</li>
 <li>ไม่มีในแผน: เข็ม Zone 3-3 + MLP1-294–342 และฐานราก Zone 3-3 (แสดงว่าเสร็จก่อนเริ่มแผน), ฐานราก MLP1-344–355, คานขวาง Zone 3-5, คาน I-Girder Zone 3-1/3-2 (สมมติต่อจากคานขวาง)</li>
-<li>BC: ลำดับตาม Stage 1–5 ในแบบ (Pier table → Traveller → A…G ละ 5 ม. → Closure 2 ม. → ปลายช่วงข้างบน Falsework) ภายในช่วงวันที่ของงาน BC ในแผน · กล่องซ้ายก่อนขวา (สมมติ)</li>
+<li>BC: วิธีเดียวกับเกียกกาย 2 (หล่อในที่) + Stage 1–5 ในแบบ – Tower crane ทุกตอม่อ → Pier table 8 ม. บน Falsework → ประกอบ Form traveller บน Pier table → Segment A…G ละ 5 ม. หล่อสมดุลสองข้าง รอบ 13 วัน (Launch D1 · เหล็ก/แบบ D2–D9 · เทคอนกรีต D10 · ลวด D12 · ดึงลวด D13) → End span บนนั่งร้าน → Closure H′ และ H (2 ม.) หล่อจาก Traveller 268, Traveller 269 ช่วงกลางรื้อก่อน → ย้าย Traveller ไปกล่องขวา (สมมติ: กล่องซ้ายก่อน)</li>
 <li>คาน I-Girder/Deck: วาดจากความกว้างหัวเสา/คานขวางใน Revit · ลึก 1.70 + พื้น 0.20 ม. (EL SUB TYPE) · จำนวนคานต่อช่วงสมมติ (~2.45 ม./ตัว)</li>
 <li>Ramp: ฐานราก/เสา/หัวเสาวาดจากตาราง GA (ขนาดหน้าตัดสมมติ) · ช่วงสุดท้ายลงเสานอกของตอม่อ IYI MLP1-233</li>
 <li>งานเข็ม: เจาะทีละต้นภายในช่วงวันของตอม่อ · Rig + Casing + กรงเหล็ก + เครนบริการ + Bentonite plant ต่อ Zone (ตำแหน่งสมมติ แบบตอนที่ 4)</li><li>ยกคาน I-Girder ตาม MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 + Method Erection I Girder (เหมือน I-girder 4D): Truck crane 110 t × 2 ตำแหน่งตาม Lifting plan Case A (&lt; 22 ม.) / B · วันละ 1 ฝั่ง G1–G6 ยก 07:00, 08:15, 09:30 / ย้ายเครน 10:50 / 12:00, 13:15, 14:30 · รถหางสาลี่จอดฝั่งถนน Access · ยกปลาย A ข้ามก่อน ปลาย B ตาม แล้ววางลง · เครนย้ายช่วงถัดไป 05:30–06:30</li><li>ช่วงต่อ BC (MLP1-266→267, 270→271): ขอบ Deck = กล่อง BC 2 กล่อง กว้าง 14.58 ม. ที่ ±7.65 ม. (แบบ BC แผ่น 26) · Median barrier สูง 0.81 ม. บน Deck ผืนเดียว (ตอม่อ Y / IYI)</li><li>Clearing + ถนน Access 7 ม. สองฝั่ง และจุดเข้า-ออกที่ถนนสาธารณะตัดแนว – ไม่มีแผนเข้าพื้นที่ตอนที่ 3 จึงวางแบบเดียวกับตอนที่ 4 (สมมติ) · เริ่มเมื่อรับมอบพื้นที่ / 30 วันก่อนงานแรกของ Zone</li><li>ความสูงเสาส่ง 500 kV และการจัดการจราจร ถ.นิมิตใหม่ เป็นภาพสมมติ</li></ul>
@@ -773,7 +806,7 @@ function buildProject(api) {
 <li>Each zone task is split between its crews (rigs / teams), each working a contiguous run of piers in station order</li>
 <li>Per-pier sequence enforced: pile → footing → column → crossbeam (conflicts shifted – ${sh || 'none'}); e.g. MLP1-343–346 columns/crossbeams are in 2025 in the plan but their piles follow the EGAT raise in late 2026</li>
 <li>Not in the programme: Zone 3-3 and MLP1-294–342 piles and Zone 3-3 footings (shown as done before the plan), footings MLP1-344–355, Zone 3-5 crossbeams, Zone 3-1/3-2 girders (assumed after the crossbeams)</li>
-<li>BC: order per the drawing's stages 1–5 (pier table → travellers → A…G 5 m → 2 m closure → side-span ends on falsework) inside the programme's BC window · left box before right (assumed)</li>
+<li>BC: Kiak Kai 2 cast-in-situ method + the drawing's stages 1–5 – tower crane per pier → 8 m pier table on falsework → form travellers assembled on the pier table → segments A…G, 5 m, cast in balance on a 13-day cycle (launch D1 · rebar/forms D2–D9 · concrete D10 · strands D12 · stressing D13) → end span on scaffolding → closures H′ and H (2 m) cast from the 268 travellers, the 269 main-span traveller dismantled first → travellers moved to the right box (assumed: left box first)</li>
 <li>I-girders / deck: drawn from the Revit pier-head / crossbeam widths · girder 1.70 + slab 0.20 m (EL SUB TYPE) · girder count per span assumed (~2.45 m spacing)</li>
 <li>Ramps: footings / columns / crossheads from the GA tables (section sizes assumed) · last span lands on the outer column of IYI pier MLP1-233</li>
 <li>Piling: piles bored one at a time inside the pier window · rig + casing + rebar cage + service crane + bentonite plant per zone (positions assumed, as Sec.4)</li><li>I-girder erection per MS ITD/RB2/J.2599/QES/MS/S1/01 Rev.2 + Method Erection I Girder (as the I-girder 4D): 2 × 110 t truck cranes at the lifting-plan positions, Case A (&lt; 22 m) / B · one carriageway G1–G6 per day, lifts 07:00, 08:15, 09:30 / cranes re-position 10:50 / 12:00, 13:15, 14:30 · pole trailer on the access-road side · end A swings across first, end B follows, then lowered · cranes move on 05:30–06:30</li><li>BC joins (MLP1-266→267, 270→271): deck edges = the two BC boxes 14.58 m wide at ±7.65 m (BC sheet 26) · 0.81 m median barrier on one-piece decks (Y / IYI piers)</li><li>Clearing + 7 m access roads on both sides and gates where public roads cross – no Sec.3 access plan, laid out as Sec.4 (assumed) · from handover / 30 days before the zone's first work</li><li>500 kV tower heights and the Nimit Mai Rd. traffic management are indicative</li></ul>
@@ -832,14 +865,13 @@ function updateProject(api, t, dt) {
     cr.lb.s.position.set(C[0].g.position.x, 30, C[0].g.position.z);
     const T = trl[li]; if (T) { const r = cr.tr, hh = T.lp - .5; r.g.visible = true; r.g.position.set(T.TR.p.x, 0, T.TR.p.z); r.g.rotation.y = Math.atan2(-T.TR.u.z, T.TR.u.x);
       r.trc.position.set(-hh, 0, 0); r.trc.rotation.y = Math.PI; r.dl.position.set(hh, 0, 0); r.pole.position.set(0, 1.0, 0); r.pole.rotation.set(0, Math.PI / 2, 0); r.pole.scale.set(.12, .12, 2 * hh - 4.6); } });
-  // form travellers at the tip of the latest cast segment of their arm (L box, then R box)
-  (G.trav || []).forEach(({ e, pier, arm }) => { if (!e.obj.visible) return;
-    const side = G.bc.some(b => b.side === 'R' && b.pier === pier && b.tag !== 'PT' && t >= b.e.start) ? 'R' : 'L';
-    const mine = G.bc.filter(b => b.pier === pier && b.side === side && /^[A-G]'?$/.test(b.tag) && (arm === 'main') === !b.tag.includes("'"));
-    const pt = G.bc.find(b => b.pier === pier && b.side === side && b.tag === 'PT'); let s = pt ? pt.s : (pier === 268 ? 7767.5 : 7847.5);
-    const dir = (arm === 'main') === (pier === 268) ? 1 : -1; s += dir * 4;
-    mine.forEach(b => { if (t >= b.e.start) s = b.s + dir * 2.5; });
-    const p = axisAt(s, side === 'L' ? -7.65 : 7.65); e.obj.position.set(p.x, Y_(13.5) + .2, p.z); e.obj.rotation.y = -p.a + Math.PI / 2; });
+  // form travellers: origin at the near joint of the active segment (tip of the cast cantilever), front truss + hanging form over the segment
+  (G.trav || []).forEach(T => { const e = T.e; if (!e.obj.visible || !T.seq.length) return; let cur = T.seq[0]; for (const q of T.seq) if (t >= q.e.start) cur = q;
+    const L = /^H/.test(cur.tag) ? 2 : 5, near = cur.s - T.dir * L / 2, p = axisAt(near, T.side === 'L' ? -7.65 : 7.65);
+    e.obj.position.set(p.x, Y_(13.5) + .05, p.z); e.obj.rotation.y = -p.a + (T.dir > 0 ? 0 : Math.PI);
+    const d = Math.abs(cur.s + T.dir * L / 2 - T.ps), H = 2.3 + 2.2 * Math.pow(Math.max(0, 40 - d) / 40, 2), len = 6.4 + H + 1.2;
+    e.obj.userData.hang.children.forEach(c => { if (c.userData.hanger) { c.scale.y = len; c.position.y = 6.4 - len / 2; } else if (c.userData.plat) c.position.set(2.8, -H - 1.2, 0);
+      else if (c.userData.form) c.position.set(2.8, -H - .9, 0); else if (c.userData.rail !== undefined) c.position.set(2.8, -H - .5, c.userData.rail); }); });
 }
 const Y_ = msl => msl - GY0, BL_ = () => G.BL || 21.6, LIFT_ = () => (G.HR || 3600000) * .75;
 /* <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
